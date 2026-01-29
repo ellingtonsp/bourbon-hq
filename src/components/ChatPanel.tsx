@@ -7,6 +7,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  status?: 'sending' | 'sent' | 'error';
 }
 
 export default function ChatPanel() {
@@ -14,12 +15,13 @@ export default function ChatPanel() {
     {
       id: '1',
       role: 'assistant',
-      content: 'Hey Stephen! 🐶 Mission Control is online. What are we working on?',
+      content: 'Hey Stephen! 🐶 Mission Control is online. Messages sent here go to my main session.',
       timestamp: new Date(),
     },
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [connected, setConnected] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -30,6 +32,22 @@ export default function ChatPanel() {
     scrollToBottom();
   }, [messages]);
 
+  // Check connection on mount
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        setConnected(data.ok);
+      } catch {
+        setConnected(false);
+      }
+    };
+    checkConnection();
+    const interval = setInterval(checkConnection, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const sendMessage = async () => {
     if (!input.trim()) return;
 
@@ -38,24 +56,51 @@ export default function ChatPanel() {
       role: 'user',
       content: input,
       timestamp: new Date(),
+      status: 'sending',
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsTyping(true);
 
-    // TODO: Connect to Clawdbot API
-    // For now, simulate a response
-    setTimeout(() => {
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: 'Got it! Working on that now... (API integration pending)',
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: input }),
+      });
+      const data = await res.json();
+
+      // Update message status
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === userMessage.id
+            ? { ...msg, status: data.ok ? 'sent' : 'error' }
+            : msg
+        )
+      );
+
+      if (data.ok && data.result) {
+        // If we got a response, show it
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: typeof data.result === 'string' 
+            ? data.result 
+            : data.result.response || 'Message received',
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+      }
+    } catch (err) {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === userMessage.id ? { ...msg, status: 'error' } : msg
+        )
+      );
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -67,10 +112,14 @@ export default function ChatPanel() {
 
   return (
     <div className="flex flex-col h-full bg-[var(--card)] rounded-xl border border-[var(--border)]">
-      <div className="px-4 py-3 border-b border-[var(--border)]">
+      <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
         <h2 className="font-semibold flex items-center gap-2">
           <span>💬</span> Chat with Bourbon
         </h2>
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${connected ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'}`}></span>
+          <span className="text-xs text-[var(--muted)]">{connected ? 'Connected' : 'Offline'}</span>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -87,9 +136,18 @@ export default function ChatPanel() {
               }`}
             >
               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-              <p className="text-xs opacity-50 mt-1">
-                {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-xs opacity-50">
+                  {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
+                {msg.status && (
+                  <span className="text-xs">
+                    {msg.status === 'sending' && '⏳'}
+                    {msg.status === 'sent' && '✓'}
+                    {msg.status === 'error' && '❌'}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -115,13 +173,14 @@ export default function ChatPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyPress}
-            placeholder="Message Bourbon..."
-            className="flex-1 bg-[var(--background)] border border-[var(--border)] rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:border-[var(--accent)] transition-colors"
+            placeholder={connected ? "Message Bourbon..." : "Offline - check gateway"}
+            disabled={!connected}
+            className="flex-1 bg-[var(--background)] border border-[var(--border)] rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:border-[var(--accent)] transition-colors disabled:opacity-50"
             rows={1}
           />
           <button
             onClick={sendMessage}
-            disabled={!input.trim() || isTyping}
+            disabled={!input.trim() || isTyping || !connected}
             className="px-4 py-2 bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-medium text-sm transition-colors"
           >
             Send

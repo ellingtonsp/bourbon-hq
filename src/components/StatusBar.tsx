@@ -5,20 +5,16 @@ import { useEffect, useState } from 'react';
 interface Status {
   model: string;
   session: string;
-  uptime: string;
-  novaraDAU: number;
-  lastActivity: string;
+  connected: boolean;
+  error?: string;
 }
 
 export default function StatusBar() {
   const [status, setStatus] = useState<Status>({
-    model: 'claude-opus-4-5',
+    model: 'unknown',
     session: 'main',
-    uptime: '2h 34m',
-    novaraDAU: 7,
-    lastActivity: 'Just now',
+    connected: false,
   });
-
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -26,13 +22,43 @@ export default function StatusBar() {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        if (data.ok && data.result) {
+          setStatus({
+            model: data.result.model || 'unknown',
+            session: data.result.sessionKey || 'main',
+            connected: true,
+          });
+        } else {
+          setStatus(prev => ({ ...prev, connected: false, error: data.error?.message }));
+        }
+      } catch (err) {
+        setStatus(prev => ({ ...prev, connected: false, error: 'Network error' }));
+      }
+    };
+
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="bg-[var(--card)] rounded-xl border border-[var(--border)] p-4">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 bg-[var(--success)] rounded-full animate-pulse"></span>
-            <span className="text-sm font-medium">Online</span>
+            <span className={`w-2 h-2 rounded-full ${
+              status.connected 
+                ? 'bg-[var(--success)] animate-pulse' 
+                : 'bg-[var(--danger)]'
+            }`}></span>
+            <span className="text-sm font-medium">
+              {status.connected ? 'Connected' : 'Disconnected'}
+            </span>
           </div>
           
           <div className="text-sm">
@@ -47,10 +73,11 @@ export default function StatusBar() {
         </div>
 
         <div className="flex items-center gap-6">
-          <div className="text-sm">
-            <span className="text-[var(--muted)]">Novara DAU:</span>{' '}
-            <span className="font-semibold text-[var(--accent)]">{status.novaraDAU}</span>
-          </div>
+          {status.error && (
+            <div className="text-sm text-[var(--danger)]">
+              {status.error}
+            </div>
+          )}
 
           <div className="text-sm font-mono text-[var(--muted)]">
             {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
