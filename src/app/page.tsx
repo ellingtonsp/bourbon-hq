@@ -3,6 +3,7 @@ import CronPanel from '@/components/CronPanel';
 import QuickActions from '@/components/QuickActions';
 import StatusBar from '@/components/StatusBar';
 import ArtifactsPanel from '@/components/ArtifactsPanel';
+import KeysManager from '@/components/KeysManager';
 
 export default function Home() {
   return (
@@ -33,7 +34,7 @@ export default function Home() {
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Chat */}
-        <div className="lg:col-span-1 lg:row-span-2">
+        <div className="lg:col-span-1 lg:row-span-3">
           <div className="h-[600px] lg:h-[calc(100vh-220px)] sticky top-6">
             <ChatPanel />
           </div>
@@ -52,6 +53,9 @@ export default function Home() {
             {/* Artifacts */}
             <ArtifactsPanel />
           </div>
+
+          {/* API Keys Manager */}
+          <KeysManager />
         </div>
       </div>
 
