@@ -6,10 +6,25 @@ interface CronJob {
   id: string;
   name?: string;
   text?: string;
-  schedule: string;
+  schedule: string | { kind: string; expr: string; tz?: string };
   enabled: boolean;
   lastRun?: string;
   nextRun?: string;
+  state?: {
+    lastRunAtMs?: number;
+    nextRunAtMs?: number;
+  };
+  payload?: {
+    kind?: string;
+    message?: string;
+    text?: string;
+  };
+}
+
+// Helper to get schedule string
+function getScheduleExpr(schedule: CronJob['schedule']): string {
+  if (typeof schedule === 'string') return schedule;
+  return schedule?.expr || '';
 }
 
 export default function CronPanel() {
@@ -22,8 +37,10 @@ export default function CronPanel() {
     try {
       const res = await fetch('/api/cron');
       const data = await res.json();
-      if (data.ok && data.result?.jobs) {
-        setJobs(data.result.jobs);
+      // Jobs can be in result.jobs or result.details.jobs
+      const jobs = data.result?.jobs || data.result?.details?.jobs;
+      if (data.ok && jobs) {
+        setJobs(jobs);
         setError(null);
       } else {
         setError(data.error?.message || 'Failed to fetch jobs');
@@ -126,9 +143,9 @@ export default function CronPanel() {
                   </button>
                   <div className="min-w-0">
                     <p className="font-medium text-sm truncate">
-                      {job.name || job.text?.slice(0, 30) || job.id}
+                      {job.name || job.payload?.text?.slice(0, 30) || job.id}
                     </p>
-                    <p className="text-xs text-[var(--muted)] font-mono">{job.schedule}</p>
+                    <p className="text-xs text-[var(--muted)] font-mono">{getScheduleExpr(job.schedule)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -151,14 +168,17 @@ export default function CronPanel() {
                 <div className="mt-3 pt-3 border-t border-[var(--border)] text-xs text-[var(--muted)]">
                   <div className="space-y-1">
                     <div><span className="opacity-60">ID:</span> {job.id}</div>
-                    {job.text && (
-                      <div><span className="opacity-60">Task:</span> {job.text}</div>
+                    {job.payload?.text && (
+                      <div><span className="opacity-60">Task:</span> {job.payload.text.slice(0, 100)}...</div>
                     )}
-                    {job.lastRun && (
-                      <div><span className="opacity-60">Last run:</span> {job.lastRun}</div>
+                    {job.payload?.message && (
+                      <div><span className="opacity-60">Task:</span> {job.payload.message.slice(0, 100)}...</div>
                     )}
-                    {job.nextRun && (
-                      <div><span className="opacity-60">Next run:</span> {job.nextRun}</div>
+                    {job.state?.lastRunAtMs && (
+                      <div><span className="opacity-60">Last run:</span> {new Date(job.state.lastRunAtMs).toLocaleString()}</div>
+                    )}
+                    {job.state?.nextRunAtMs && (
+                      <div><span className="opacity-60">Next run:</span> {new Date(job.state.nextRunAtMs).toLocaleString()}</div>
                     )}
                   </div>
                 </div>

@@ -15,9 +15,12 @@ export default function StatusBar() {
     session: 'main',
     connected: false,
   });
-  const [time, setTime] = useState(new Date());
+  const [time, setTime] = useState<Date | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+    setTime(new Date());
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
@@ -28,9 +31,13 @@ export default function StatusBar() {
         const res = await fetch('/api/status');
         const data = await res.json();
         if (data.ok && data.result) {
+          // Extract model from statusText or details
+          const statusText = data.result.details?.statusText || data.result.content?.[0]?.text || '';
+          const modelMatch = statusText.match(/Model:\s*([^\s·]+)/);
+          const sessionMatch = statusText.match(/Session:\s*([^\s•]+)/);
           setStatus({
-            model: data.result.model || 'unknown',
-            session: data.result.sessionKey || 'main',
+            model: modelMatch?.[1] || data.result.model || 'opus',
+            session: sessionMatch?.[1] || data.result.details?.sessionKey || 'main',
             connected: true,
           });
         } else {
@@ -80,7 +87,7 @@ export default function StatusBar() {
           )}
 
           <div className="text-sm font-mono text-[var(--muted)]">
-            {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            {mounted && time ? time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--:--'}
           </div>
         </div>
       </div>

@@ -61,15 +61,21 @@ const actions: Action[] = [
   },
 ];
 
+interface ActionResult {
+  action: string;
+  success: boolean;
+  response?: string;
+  error?: string;
+}
+
 export default function QuickActions() {
   const [loading, setLoading] = useState<string | null>(null);
   const [inputModal, setInputModal] = useState<Action | null>(null);
   const [inputValue, setInputValue] = useState('');
-  const [lastResult, setLastResult] = useState<{ action: string; success: boolean } | null>(null);
+  const [resultModal, setResultModal] = useState<ActionResult | null>(null);
 
   const executeAction = async (action: Action, params?: Record<string, string>) => {
     setLoading(action.id);
-    setLastResult(null);
     
     try {
       const res = await fetch('/api/actions', {
@@ -81,14 +87,19 @@ export default function QuickActions() {
         }),
       });
       const data = await res.json();
-      setLastResult({ action: action.name, success: data.ok });
-      
-      if (!data.ok) {
-        console.error('Action failed:', data.error);
-      }
+
+      setResultModal({
+        action: action.name,
+        success: data.ok,
+        response: data.response || data.result?.response,
+        error: data.error?.message || data.error,
+      });
     } catch (err) {
-      setLastResult({ action: action.name, success: false });
-      console.error('Action error:', err);
+      setResultModal({
+        action: action.name,
+        success: false,
+        error: err instanceof Error ? err.message : 'Unknown error',
+      });
     } finally {
       setLoading(null);
     }
@@ -121,13 +132,6 @@ export default function QuickActions() {
           <h2 className="font-semibold flex items-center gap-2">
             <span>⚡</span> Quick Actions
           </h2>
-          {lastResult && (
-            <span className={`text-xs px-2 py-1 rounded ${
-              lastResult.success ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-            }`}>
-              {lastResult.action}: {lastResult.success ? 'Sent!' : 'Failed'}
-            </span>
-          )}
         </div>
 
         <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -179,6 +183,43 @@ export default function QuickActions() {
               >
                 Execute
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Result Modal */}
+      {resultModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[var(--card)] rounded-xl border border-[var(--border)] w-full max-w-2xl max-h-[80vh] flex flex-col">
+            <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
+              <h3 className="font-semibold flex items-center gap-2">
+                <span>{resultModal.success ? '✅' : '❌'}</span>
+                {resultModal.action}
+              </h3>
+              <button
+                onClick={() => setResultModal(null)}
+                className="p-2 hover:bg-[var(--card-hover)] rounded-lg transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              {resultModal.success && resultModal.response ? (
+                <div className="prose prose-invert max-w-none">
+                  <pre className="text-sm whitespace-pre-wrap font-sans bg-[var(--background)] p-4 rounded-lg border border-[var(--border)]">
+                    {resultModal.response}
+                  </pre>
+                </div>
+              ) : resultModal.error ? (
+                <div className="text-red-400 bg-red-500/10 p-4 rounded-lg border border-red-500/30">
+                  {resultModal.error}
+                </div>
+              ) : (
+                <div className="text-[var(--muted)]">
+                  Action completed but no response was returned.
+                </div>
+              )}
             </div>
           </div>
         </div>
