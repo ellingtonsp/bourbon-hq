@@ -1,13 +1,13 @@
 // Gateway client for calling Clawdbot tools
-import https from 'https';
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'https://127.0.0.1:18789';
+const GATEWAY_PASSWORD = process.env.GATEWAY_PASSWORD || '';
 const GATEWAY_TOKEN = process.env.GATEWAY_TOKEN || '';
 
-// Create agent that ignores self-signed certs in dev
-const httpsAgent = new https.Agent({
-  rejectUnauthorized: false,
-});
+// Use password if available, otherwise token
+const AUTH_HEADER = GATEWAY_PASSWORD 
+  ? `Bearer ${GATEWAY_PASSWORD}`
+  : `Bearer ${GATEWAY_TOKEN}`;
 
 export interface ToolResponse<T = unknown> {
   ok: boolean;
@@ -24,30 +24,28 @@ export async function invokeTool<T = unknown>(
   sessionKey = 'main'
 ): Promise<ToolResponse<T>> {
   try {
-    // Use native https for Node.js with custom agent
     const url = new URL('/tools/invoke', GATEWAY_URL);
     
     const response = await fetch(url.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+        'Authorization': AUTH_HEADER,
       },
       body: JSON.stringify({
         tool,
         args,
         sessionKey,
       }),
-      // @ts-expect-error - Node.js specific option
-      agent: GATEWAY_URL.startsWith('https') ? httpsAgent : undefined,
     });
 
     if (!response.ok) {
+      const text = await response.text();
       return {
         ok: false,
         error: {
           type: 'http_error',
-          message: `HTTP ${response.status}: ${response.statusText}`,
+          message: `HTTP ${response.status}: ${text || response.statusText}`,
         },
       };
     }
