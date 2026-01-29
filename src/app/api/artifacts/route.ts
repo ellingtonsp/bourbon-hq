@@ -1,64 +1,50 @@
 import { NextResponse } from 'next/server';
 
-const GATEWAY_URL = process.env.GATEWAY_URL || 'http://127.0.0.1:18789';
-const GATEWAY_PASSWORD = process.env.GATEWAY_PASSWORD || '';
+// Known important workspace files
+const WORKSPACE_FILES = [
+  { path: '/Users/bourbon/clawd/MEMORY.md', name: 'MEMORY.md', type: 'memory' },
+  { path: '/Users/bourbon/clawd/SOUL.md', name: 'SOUL.md', type: 'document' },
+  { path: '/Users/bourbon/clawd/USER.md', name: 'USER.md', type: 'document' },
+  { path: '/Users/bourbon/clawd/AGENTS.md', name: 'AGENTS.md', type: 'document' },
+  { path: '/Users/bourbon/clawd/TOOLS.md', name: 'TOOLS.md', type: 'config' },
+  { path: '/Users/bourbon/clawd/IDENTITY.md', name: 'IDENTITY.md', type: 'document' },
+  { path: '/Users/bourbon/clawd/HEARTBEAT.md', name: 'HEARTBEAT.md', type: 'config' },
+  { path: '/Users/bourbon/clawd/memory/heartbeat-state.json', name: 'heartbeat-state.json', type: 'config' },
+];
 
-// Determine type from filename
-function getFileType(name: string): string {
-  if (name.includes('MEMORY') || name.match(/^\d{4}-\d{2}-\d{2}\.md$/)) return 'memory';
-  if (name.includes('draft') || name.includes('Draft')) return 'draft';
-  if (name.includes('report') || name.includes('Report')) return 'report';
-  if (name.endsWith('.json') || name.includes('config')) return 'config';
-  return 'document';
+// Generate today's date for memory file
+function getTodayMemoryFile(): { path: string; name: string; type: string } {
+  const today = new Date();
+  const dateStr = today.toISOString().split('T')[0];
+  return {
+    path: `/Users/bourbon/clawd/memory/${dateStr}.md`,
+    name: `${dateStr}.md`,
+    type: 'memory',
+  };
+}
+
+// Generate yesterday's date for memory file  
+function getYesterdayMemoryFile(): { path: string; name: string; type: string } {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const dateStr = yesterday.toISOString().split('T')[0];
+  return {
+    path: `/Users/bourbon/clawd/memory/${dateStr}.md`,
+    name: `${dateStr}.md`,
+    type: 'memory',
+  };
 }
 
 export async function GET() {
-  try {
-    // Find markdown and important files in workspace
-    const response = await fetch(`${GATEWAY_URL}/tools/invoke`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GATEWAY_PASSWORD}`,
-      },
-      body: JSON.stringify({
-        tool: 'exec',
-        args: {
-          command: `find /Users/bourbon/clawd -maxdepth 2 -type f \\( -name "*.md" -o -name "*.json" \\) ! -path "*/node_modules/*" ! -path "*/.git/*" ! -path "*/.next/*" 2>/dev/null | head -30`,
-          timeout: 10,
-        },
-      }),
-    });
+  // Build file list with dynamic date files
+  const files = [
+    getTodayMemoryFile(),
+    getYesterdayMemoryFile(),
+    ...WORKSPACE_FILES,
+  ].map((f, i) => ({
+    id: String(i),
+    ...f,
+  }));
 
-    const data = await response.json();
-    
-    if (data.ok && data.result) {
-      const output = typeof data.result === 'string' ? data.result : data.result.stdout || '';
-      const paths = output.split('\n').filter((p: string) => p.trim());
-      
-      const files = paths.map((path: string, index: number) => {
-        const name = path.split('/').pop() || path;
-        return {
-          id: String(index),
-          name,
-          path,
-          type: getFileType(name),
-        };
-      });
-
-      // Sort: memory files first, then by name
-      files.sort((a: { type: string; name: string }, b: { type: string; name: string }) => {
-        if (a.type === 'memory' && b.type !== 'memory') return -1;
-        if (b.type === 'memory' && a.type !== 'memory') return 1;
-        return a.name.localeCompare(b.name);
-      });
-
-      return NextResponse.json({ ok: true, files });
-    }
-
-    return NextResponse.json({ ok: false, error: 'Failed to list files', files: [] });
-  } catch (error) {
-    console.error('Artifacts error:', error);
-    return NextResponse.json({ ok: false, error: 'Network error', files: [] });
-  }
+  return NextResponse.json({ ok: true, files });
 }

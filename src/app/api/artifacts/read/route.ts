@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const GATEWAY_URL = process.env.GATEWAY_URL || 'http://127.0.0.1:18789';
-const GATEWAY_PASSWORD = process.env.GATEWAY_PASSWORD || '';
+import { readFile } from 'fs/promises';
 
 export async function GET(request: NextRequest) {
   const path = request.nextUrl.searchParams.get('path');
@@ -16,30 +14,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const response = await fetch(`${GATEWAY_URL}/tools/invoke`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GATEWAY_PASSWORD}`,
-      },
-      body: JSON.stringify({
-        tool: 'read',
-        args: { path },
-      }),
-    });
-
-    const data = await response.json();
-    
-    if (data.ok && data.result !== undefined) {
-      return NextResponse.json({ ok: true, content: data.result });
-    }
-
-    return NextResponse.json({ 
-      ok: false, 
-      error: data.error?.message || 'Failed to read file' 
-    });
+    const content = await readFile(path, 'utf-8');
+    return NextResponse.json({ ok: true, content });
   } catch (error) {
-    console.error('Read error:', error);
-    return NextResponse.json({ ok: false, error: 'Network error' });
+    const message = error instanceof Error ? error.message : 'Failed to read file';
+    // Check if it's a "file not found" error
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return NextResponse.json({ ok: false, error: 'File not found' }, { status: 404 });
+    }
+    return NextResponse.json({ ok: false, error: message });
   }
 }
